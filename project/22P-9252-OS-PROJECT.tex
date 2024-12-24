@@ -1,0 +1,844 @@
+\documentclass{article}
+\usepackage[utf8]{inputenc}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage[margin=1in]{geometry}
+\usepackage{graphicx}  % For images
+\usepackage{subfig}    % For subfigures
+\usepackage{float}     % For precise figure positioning
+\usepackage{caption}   % For custom captions
+\usepackage[margin=1in]{geometry}  % Page margins
+
+
+% Define colors for code listings
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+% Configure code listings
+\lstset{
+    backgroundcolor=\color{backcolour},   
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{magenta},
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codepurple},
+    basicstyle=\ttfamily\footnotesize,
+    breakatwhitespace=false,         
+    breaklines=true,                 
+    captionpos=b,                    
+    keepspaces=true,                 
+    numbers=left,                    
+    numbersep=5pt,                  
+    showspaces=false,                
+    showstringspaces=false,
+    showtabs=false,                  
+    tabsize=2
+}
+
+\begin{document}
+
+\begin{center}
+    \textbf{FAST University Peshawar}\\
+    \textbf{Department of Computer Science}\\
+    \Large{\textbf{OS Project}}\\
+    \vspace{0.5cm}
+      \textbf{Name:} Tazmeen Afroz\\
+        \textbf{Roll No:} 22P-9252\\
+    \textbf{Course:} Operating Systems\\
+    \textbf{Lecturer:} Engr. M Usman Malik\\
+    \textbf{Due Date:} 25 November 2024\\
+  
+\end{center}
+
+
+
+\section*{Task 1: CPU Scheduling Implementation}
+
+
+\subsection*{Task List Example}
+
+\begin{verbatim}
+T1, 4, 20
+T2, 2, 25
+T3, 3, 25
+T4, 3, 15
+T5, 10, 10
+\end{verbatim}
+
+\subsection*{Code Implementation}
+
+
+\subsubsection*{Main Structure:}
+\begin{lstlisting}[language=C, caption=Scheduling Code ]
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <limits.h>
+
+#define tasks_n 10
+#define time_quantum 5
+
+
+typedef struct {
+    char name[10];
+    int priority;
+    int cpuBurst;
+    int remainingTime;
+    int waitingTime;
+    int turnaroundTime;
+    int completed;
+} Task;
+
+// Function to print horizontal line
+void printLine(int width) {
+    for(int i = 0; i < width; i++) printf("-");
+    printf("\n");
+}
+
+// Function to print formatted table
+void printScheduleTable(Task tasks[], int n, const char* algorithm) {
+    printf("\n%s Scheduling Results:\n", algorithm);
+    printLine(75);
+    printf("| %-8s | %-8s | %-12s | %-15s | %-15s |\n", 
+           "Task", "Priority", "Burst Time", "Waiting Time", "Turnaround Time");
+    printLine(75);
+    
+    float avgWait = 0, avgTurnaround = 0;
+    
+    for (int i = 0; i < n; i++) {
+        printf("| %-8s | %-8d | %-12d | %-15d | %-15d |\n",
+               tasks[i].name, 
+               tasks[i].priority,
+               tasks[i].cpuBurst,
+               tasks[i].waitingTime,
+               tasks[i].turnaroundTime);
+        avgWait += tasks[i].waitingTime;
+        avgTurnaround += tasks[i].turnaroundTime;
+    }
+    
+    printLine(75);
+    printf("Average Waiting Time: %.2f\n", avgWait/n);
+    printf("Average Turnaround Time: %.2f\n", avgTurnaround/n);
+}
+
+// Function to load tasks from file
+int loadTasks(Task tasks[], const char* filename) {
+    FILE* file = fopen(filename, "r");
+    if (file == NULL) {
+        printf("Error opening file!\n");
+        return 0;
+    }
+
+    int n = 0;
+    while (fscanf(file, "%[^,], %d, %d\n", 
+           tasks[n].name, &tasks[n].priority, &tasks[n].cpuBurst) == 3) {
+        tasks[n].remainingTime = tasks[n].cpuBurst;
+        tasks[n].waitingTime = 0;
+        tasks[n].turnaroundTime = 0;
+        tasks[n].completed = 0;
+        n++;
+    }
+
+    fclose(file);
+    return n;
+}
+
+void printGanttChart(Task tasks[], int n, const char* algorithm) {
+    printf("\nGantt Chart for %s:\n", algorithm);
+  
+    
+    // Print the task execution bars
+    printf("|");
+    for(int i = 0; i < n; i++) {
+        for(int j = 0; j < tasks[i].cpuBurst; j++) {
+            printf("-");
+        }
+        printf("|");
+    }
+    printf("\n");
+    
+    // Print the task names
+    printf("|");
+    for(int i = 0; i < n; i++) {
+        int spaces = tasks[i].cpuBurst/2;
+        for(int j = 0; j < spaces - (strlen(tasks[i].name)/2); j++) printf(" ");
+        printf("%s", tasks[i].name);
+        for(int j = 0; j < tasks[i].cpuBurst - spaces - (strlen(tasks[i].name) - strlen(tasks[i].name)/2); j++) printf(" ");
+        printf("|");
+    }
+    printf("\n");
+    
+    // Print the time markers
+    printf("0");
+    int currentTime = 0;
+    for(int i = 0; i < n; i++) {
+        currentTime += tasks[i].cpuBurst;
+        for(int j = 0; j < tasks[i].cpuBurst-1; j++) printf(" ");
+        printf("%d", currentTime);
+    }
+    printf("\n");
+   
+}
+
+// Modify each scheduling function to include the Gantt chart. Here's how to update them:
+
+void fcfs(Task tasks[], int n) {
+    Task tempTasks[tasks_n];
+    memcpy(tempTasks, tasks, sizeof(Task) * n);
+    
+    int currentTime = 0;
+    for (int i = 0; i < n; i++) {
+        tempTasks[i].waitingTime = currentTime;
+        tempTasks[i].turnaroundTime = currentTime + tempTasks[i].cpuBurst;
+        currentTime += tempTasks[i].cpuBurst;
+    }
+    
+    printScheduleTable(tempTasks, n, "FCFS");
+    printGanttChart(tempTasks, n, "FCFS");
+}
+
+void sjf(Task tasks[], int n) {
+    Task tempTasks[tasks_n];
+    memcpy(tempTasks, tasks, sizeof(Task) * n);
+    
+    // Sort by CPU burst time
+    for (int i = 0; i < n-1; i++) {
+        for (int j = 0; j < n-i-1; j++) {
+            if (tempTasks[j].cpuBurst > tempTasks[j+1].cpuBurst) {
+                Task temp = tempTasks[j];
+                tempTasks[j] = tempTasks[j+1];
+                tempTasks[j+1] = temp;
+            }
+        }
+    }
+    
+    int currentTime = 0;
+    for (int i = 0; i < n; i++) {
+        tempTasks[i].waitingTime = currentTime;
+        tempTasks[i].turnaroundTime = currentTime + tempTasks[i].cpuBurst;
+        currentTime += tempTasks[i].cpuBurst;
+    }
+    
+    printScheduleTable(tempTasks, n, "SJF");
+    printGanttChart(tempTasks, n, "SJF");
+}
+
+void priorityScheduling(Task tasks[], int n) {
+    Task tempTasks[tasks_n];
+    memcpy(tempTasks, tasks, sizeof(Task) * n);
+    
+    // Sort by priority
+    for (int i = 0; i < n-1; i++) {
+        for (int j = 0; j < n-i-1; j++) {
+            if (tempTasks[j].priority > tempTasks[j+1].priority) {
+                Task temp = tempTasks[j];
+                tempTasks[j] = tempTasks[j+1];
+                tempTasks[j+1] = temp;
+            }
+        }
+    }
+    
+    int currentTime = 0;
+    for (int i = 0; i < n; i++) {
+        tempTasks[i].waitingTime = currentTime;
+        tempTasks[i].turnaroundTime = currentTime + tempTasks[i].cpuBurst;
+        currentTime += tempTasks[i].cpuBurst;
+    }
+    
+    printScheduleTable(tempTasks, n, "Priority");
+    printGanttChart(tempTasks, n, "Priority");
+}
+
+void roundRobin(Task tasks[], int n, int timeQuantum) {
+    Task tempTasks[tasks_n];
+    memcpy(tempTasks, tasks, sizeof(Task) * n);
+    
+    // Array to store execution order for Gantt chart
+    Task executionOrder[100];  // Assuming max 100 time slices
+    int executionCount = 0;
+    
+    int remainingTasks = n;
+    int currentTime = 0;
+    
+    // Initialize remaining time
+    for (int i = 0; i < n; i++) {
+        tempTasks[i].remainingTime = tempTasks[i].cpuBurst;
+    }
+    
+    while (remainingTasks > 0) {
+        for (int i = 0; i < n; i++) {
+            if (tempTasks[i].remainingTime > 0) {
+                int executeTime = (tempTasks[i].remainingTime > timeQuantum) ? 
+                                 timeQuantum : tempTasks[i].remainingTime;
+                
+                // Store execution step for Gantt chart
+                executionOrder[executionCount] = tempTasks[i];
+                executionOrder[executionCount].cpuBurst = executeTime;
+                executionCount++;
+                
+                tempTasks[i].remainingTime -= executeTime;
+                currentTime += executeTime;
+                
+                if (tempTasks[i].remainingTime == 0) {
+                    remainingTasks--;
+                    tempTasks[i].turnaroundTime = currentTime;
+                    tempTasks[i].waitingTime = tempTasks[i].turnaroundTime - tempTasks[i].cpuBurst;
+                }
+            }
+        }
+    }
+    
+    printScheduleTable(tempTasks, n, "Round Robin");
+    printGanttChart(executionOrder, executionCount, "Round Robin");
+}
+
+void priorityRoundRobin(Task tasks[], int n, int timeQuantum) {
+    Task tempTasks[tasks_n];
+    memcpy(tempTasks, tasks, sizeof(Task) * n);
+    
+    // Array to store execution order for Gantt chart
+    Task executionOrder[100];  // Assuming max 100 time slices
+    int executionCount = 0;
+    
+    int remainingTasks = n;
+    int currentTime = 0;
+    
+    // Initialize remaining time
+    for (int i = 0; i < n; i++) {
+        tempTasks[i].remainingTime = tempTasks[i].cpuBurst;
+    }
+    
+    while (remainingTasks > 0) {
+        int highestPriority = INT_MAX;
+        for (int i = 0; i < n; i++) {
+            if (tempTasks[i].remainingTime > 0 && tempTasks[i].priority < highestPriority) {
+                highestPriority = tempTasks[i].priority;
+            }
+        }
+        
+        int taskExecuted = 0;
+        for (int i = 0; i < n; i++) {
+            if (tempTasks[i].remainingTime > 0 && tempTasks[i].priority == highestPriority) {
+                int executeTime = (tempTasks[i].remainingTime > timeQuantum) ? 
+                                 timeQuantum : tempTasks[i].remainingTime;
+                
+                // Store execution step for Gantt chart
+                executionOrder[executionCount] = tempTasks[i];
+                executionOrder[executionCount].cpuBurst = executeTime;
+                executionCount++;
+                
+                tempTasks[i].remainingTime -= executeTime;
+                currentTime += executeTime;
+                taskExecuted = 1;
+                
+                if (tempTasks[i].remainingTime == 0) {
+                    remainingTasks--;
+                    tempTasks[i].turnaroundTime = currentTime;
+                    tempTasks[i].waitingTime = tempTasks[i].turnaroundTime - tempTasks[i].cpuBurst;
+                }
+            }
+        }
+        
+        if (!taskExecuted) break;
+    }
+    
+    printScheduleTable(tempTasks, n, "Priority Round Robin");
+    printGanttChart(executionOrder, executionCount, "Priority Round Robin");
+}
+
+int main() {
+    Task tasks[tasks_n];
+    int n = loadTasks(tasks, "schedule.txt");
+    
+    if (n == 0) {
+        printf("No tasks loaded!\n");
+        return 1;
+    }
+    
+    printf("CPU Scheduling Simulator\n");
+    printLine(50);
+    printf("Loaded %d tasks.\n\n", n);
+    
+    // Execute all scheduling algorithms
+    fcfs(tasks, n);
+    sjf(tasks, n);
+    priorityScheduling(tasks, n);
+    roundRobin(tasks, n, time_quantum);
+    priorityRoundRobin(tasks, n, time_quantum);
+    
+    return 0;
+}
+\end{lstlisting}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{FCFS.png}
+    \caption{FCFS}
+    \label{fig:fcfs}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{SJF.png}
+    \caption{SJF}
+    \label{fig:sjf}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{priority.png}
+    \caption{Priority}
+    \label{fig:priority}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{RR.png}
+    \caption{Round Robin}
+    \label{fig:RR}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{PRR.png}
+    \caption{Priority Round Robin}
+    \label{fig:PRR}
+\end{figure}
+
+\section*{Task 2: Socket Programming Implementation}
+
+\subsection*{Part 1: Local System Socket Programming}
+
+\subsubsection*{Code Implementation}
+
+\subsubsection*{Server code}
+\begin{lstlisting}[language=C, caption= server code - Socket Programming Code]
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <unistd.h>
+#include <pthread.h>
+#include <semaphore.h>
+#include <errno.h>
+#include <signal.h>
+#include <time.h>
+
+#define PORT 8080
+#define MAX_CLIENTS 4
+#define SERVER_PREFIX "SERVER: "
+#define LOG_FILE "server_log.txt"
+#define MAX_MESSAGE_LENGTH 1024
+
+typedef struct {
+    int socket;
+    int id;
+    char messages[100][1024];
+    int msg_count;
+    int active;
+} Client;
+
+// Global variables
+Client clients[MAX_CLIENTS];
+int client_count = 0;
+sem_t server_semaphore;  
+int server_running = 1;
+
+void log_error(const char *message) {
+    FILE *log_file = fopen(LOG_FILE, "a");
+    if (log_file == NULL) {
+        perror("Failed to open log file");
+        return;
+    }
+    fprintf(log_file, "ERROR: %s: %s\n", message, strerror(errno));
+    fclose(log_file);
+}
+
+void broadcast_message(const char *message) {
+    char broadcast_message[1050];
+    snprintf(broadcast_message, sizeof(broadcast_message), "%s%s", SERVER_PREFIX, message);
+
+    sem_wait(&server_semaphore);  // Lock with semaphore
+    for (int i = 0; i < client_count; i++) {
+        if (clients[i].active) {
+            if (send(clients[i].socket, broadcast_message, strlen(broadcast_message), 0) < 0) {
+                perror("Send failed");
+                log_error("Send failed");
+            }
+        }
+    }
+    sem_post(&server_semaphore);  // Unlock with semaphore
+}
+
+void store_client_message(int client_id, const char *message) {
+    sem_wait(&server_semaphore);
+    int msg_idx = clients[client_id].msg_count % 100;
+    strncpy(clients[client_id].messages[msg_idx], message, 1024);
+    clients[client_id].msg_count++;
+    sem_post(&server_semaphore);
+}
+
+void show_menu() {
+    printf("\n=== Server Menu ===\n");
+    printf("1. Send Broadcast Message\n");
+    printf("2. View Individual Client Messages\n");
+    printf("3. Exit\n");
+    printf("Enter choice : ");
+}
+
+void *handle_client(void *client_data) {
+    Client *client = (Client*)client_data;
+    int read_size;
+    char client_message[1024];
+    char display_message[1100];
+
+    printf("\nClient %d connected\n", client->id);
+
+    while (server_running && (read_size = recv(client->socket, client_message, 1024, 0)) > 0) {
+        client_message[read_size] = '\0';
+        
+        snprintf(display_message, sizeof(display_message), "Client %d: %s", client->id, client_message);
+        store_client_message(client->id, display_message);
+        
+        printf("\n%s\n", display_message);
+    }
+
+    sem_wait(&server_semaphore);
+    client->active = 0;
+    printf("\nClient %d disconnected\n", client->id);
+    sem_post(&server_semaphore);
+
+    close(client->socket);
+    return 0;
+}
+
+void view_individual_messages() {
+    int client_id;
+    printf("\nActive clients:\n");
+    
+    sem_wait(&server_semaphore);
+    for (int i = 0; i < client_count; i++) {
+        if (clients[i].active) {
+            printf("Client %d\n", i);
+        }
+    }
+    sem_post(&server_semaphore);
+    
+    printf("Enter client ID to view messages: ");
+    scanf("%d", &client_id);
+    getchar(); // Clear newline
+    
+    if (client_id >= 0 && client_id < client_count) {
+        printf("\nMessages from Client %d:\n", client_id);
+        sem_wait(&server_semaphore);
+        int start = (clients[client_id].msg_count > 100) ? 
+                   clients[client_id].msg_count - 100 : 0;
+        for (int i = start; i < clients[client_id].msg_count; i++) {
+            printf("%s\n", clients[client_id].messages[i % 100]);
+        }
+        sem_post(&server_semaphore);
+    } else {
+        printf("Invalid client ID\n");
+    }
+}
+
+void *server_menu(void *arg) {
+    int choice;
+    char input[1024];
+    char broadcast_msg[1024];
+
+    show_menu();
+
+    while (server_running) {
+        fgets(input, sizeof(input), stdin);
+        choice = atoi(input);
+
+        switch (choice) {
+            case 1:
+                printf("Enter message to broadcast: ");
+                fgets(broadcast_msg, sizeof(broadcast_msg), stdin);
+                broadcast_msg[strcspn(broadcast_msg, "\n")] = '\0';
+                broadcast_message(broadcast_msg);
+                printf("Message broadcasted\n");
+                break;
+                
+            case 2:
+                view_individual_messages();
+                break;
+                
+            case 3:
+                printf("\nShutting down server...\n");
+                server_running = 0;
+                sem_wait(&server_semaphore);
+                for (int i = 0; i < client_count; i++) {
+                    if (clients[i].active) {
+                        send(clients[i].socket, "SERVER_SHUTDOWN", 14, 0);
+                        close(clients[i].socket);
+                    }
+                }
+                sem_post(&server_semaphore);
+                exit(0);
+                break;
+                
+            default:
+                printf("Invalid choice!\n");
+                show_menu();
+        }
+    }
+    return 0;
+}
+
+int main() {
+    int server_fd, new_socket, c;
+    struct sockaddr_in server, client;
+    pthread_t thread_id, menu_thread;
+
+    // Initialize semaphore
+    if (sem_init(&server_semaphore, 0, 1) < 0) {
+        perror("Semaphore initialization failed");
+        return 1;
+    }
+
+    server_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (server_fd == -1) {
+        perror("Could not create socket");
+        log_error("Could not create socket");
+        return 1;
+    }
+
+    server.sin_family = AF_INET;
+    server.sin_addr.s_addr = INADDR_ANY;
+    server.sin_port = htons(PORT);
+
+    if (bind(server_fd, (struct sockaddr *)&server, sizeof(server)) < 0) {
+        perror("bind failed");
+        log_error("bind failed");
+        return 1;
+    }
+
+    listen(server_fd, 3);
+    printf("Server started on port %d\n", PORT);
+    printf("Showing all client activity - Use menu for additional options\n");
+
+    if (pthread_create(&menu_thread, NULL, server_menu, NULL) < 0) {
+        perror("could not create menu thread");
+        log_error("could not create menu thread");
+        return 1;
+    }
+
+    c = sizeof(struct sockaddr_in);
+    while (server_running && (new_socket = accept(server_fd, (struct sockaddr *)&client, (socklen_t*)&c))) {
+        if (new_socket < 0) {
+            perror("accept failed");
+            log_error("accept failed");
+            continue;
+        }
+
+        sem_wait(&server_semaphore);
+        if (client_count >= MAX_CLIENTS) {
+            send(new_socket, "Server is full", 13, 0);
+            close(new_socket);
+            sem_post(&server_semaphore);
+            continue;
+        }
+
+        clients[client_count].socket = new_socket;
+        clients[client_count].id = client_count;
+        clients[client_count].active = 1;
+        clients[client_count].msg_count = 0;
+
+        if (pthread_create(&thread_id, NULL, handle_client, (void*)&clients[client_count]) < 0) {
+            perror("could not create thread");
+            log_error("could not create thread");
+            sem_post(&server_semaphore);
+            return 1;
+        }
+
+        client_count++;
+        sem_post(&server_semaphore);
+    }
+
+    sem_destroy(&server_semaphore);
+    return 0;
+}
+\end{lstlisting}
+
+\subsubsection*{Client code}
+
+\begin{lstlisting}[language=C, caption= client code - Socket Programming Code]
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <unistd.h>
+#include <pthread.h>
+#include <semaphore.h>
+#include <errno.h>
+
+#define PORT 8080
+#define LOG_FILE "client_log.txt"
+
+int client_running = 1;
+sem_t client_semaphore; 
+
+void log_error(const char *message) {
+    FILE *log_file = fopen(LOG_FILE, "a");
+    if (log_file == NULL) {
+        perror("Failed to open log file");
+        return;
+    }
+    fprintf(log_file, "ERROR: %s: %s\n", message, strerror(errno));
+    fclose(log_file);
+}
+
+void show_menu() {
+    printf("\n=== Client Menu ===\n");
+    printf("1. Send Message\n");
+    printf("2. Exit\n");
+    printf("Enter choice: ");
+}
+
+void *receive_messages(void *socket_desc) {
+    int sock = *(int*)socket_desc;
+    char server_message[1024];
+    int read_size;
+
+    while (client_running && (read_size = recv(sock, server_message, 1024, 0)) > 0) {
+        server_message[read_size] = '\0';
+        
+        sem_wait(&client_semaphore);  // Protect shared resource access
+        if (strcmp(server_message, "SERVER_SHUTDOWN") == 0) {
+            printf("\nServer is shutting down. Press Enter to exit...\n");
+            client_running = 0;
+            sem_post(&client_semaphore);
+            break;
+        }
+        
+        if (strncmp(server_message, "SERVER:", 7) == 0) {
+            printf("\n%s\n", server_message);
+        }
+        
+        if (client_running) {
+            fflush(stdout);
+        }
+        sem_post(&client_semaphore);  // Release semaphore
+    }
+
+    sem_wait(&client_semaphore);
+    if (read_size == 0 && client_running) {
+        printf("\nServer disconnected\n");
+        client_running = 0;
+    } else if (read_size == -1 && client_running) {
+        perror("recv failed");
+        log_error("recv failed");
+        client_running = 0;
+    }
+    sem_post(&client_semaphore);
+
+    return 0;
+}
+
+int main() {
+    int sock;
+    struct sockaddr_in server;
+    char message[1024];
+    pthread_t thread_id;
+    int choice;
+    char input[10];
+
+    // Initialize semaphore
+    if (sem_init(&client_semaphore, 0, 1) < 0) {
+        perror("Semaphore initialization failed");
+        return 1;
+    }
+
+    sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock == -1) {
+        perror("Could not create socket");
+        log_error("Could not create socket");
+        return 1;
+    }
+
+    server.sin_addr.s_addr = inet_addr("127.0.0.1");
+    server.sin_family = AF_INET;
+    server.sin_port = htons(PORT);
+
+    if (connect(sock, (struct sockaddr *)&server, sizeof(server)) < 0) {
+        perror("connect failed");
+        log_error("connect failed");
+        return 1;
+    }
+    printf("Connected to server\n");
+
+    if (pthread_create(&thread_id, NULL, receive_messages, (void*)&sock) < 0) {
+        perror("could not create thread");
+        log_error("could not create thread");
+        return 1;
+    }
+
+    while (client_running) {
+        show_menu();
+        fgets(input, sizeof(input), stdin);
+        choice = atoi(input);
+
+        sem_wait(&client_semaphore);  // Protect shared resource access
+        switch (choice) {
+            case 1:
+                printf("Enter message: ");
+                fgets(message, 1024, stdin);
+                message[strcspn(message, "\n")] = '\0';
+                
+                if (send(sock, message, strlen(message), 0) < 0) {
+                    perror("Send failed");
+                    log_error("Send failed");
+                    client_running = 0;
+                } else {
+                    printf("Message sent to server\n");
+                }
+                break;
+                
+            case 2:
+                printf("Exiting...\n");
+                client_running = 0;
+                break;
+                
+            default:
+                printf("Invalid choice!\n");
+        }
+        sem_post(&client_semaphore);  // Release semaphore
+    }
+
+    sem_destroy(&client_semaphore);
+    close(sock);
+    return 0;
+}
+\end{lstlisting}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{local_socket_program.png}
+    \caption{local socket programming}
+    \label{fig:SP}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{local_socket_program2.png}
+    \caption{local socket programming}
+    \label{fig:SP}
+\end{figure}
+\subsection*{Part 2: Distributed System Socket Programming}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{distributed_socket_programming.jpeg}
+    \caption{distributed system socket programming}
+    \label{fig:SP}
+\end{figure}
+
+
+\end{document}
